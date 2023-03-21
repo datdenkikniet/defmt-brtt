@@ -1,0 +1,11 @@
+[package]
+name = "defmt-brtt"
+version = "0.0.0"
+edition = "2021"
+authors = ["Johannes Cornelis Draajier <jcdra1@gmail.com", "Emil Fresk <emil.fresk@gmail.com>"]
+license = "MIT OR Apache-2.0"
+description = "Defmt logs over RTT as well as through a BBQueue"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
