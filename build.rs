@@ -1,7 +1,7 @@
 use std::{env, path::PathBuf};
 
 fn main() {
-    println!("cargo:rerun-if-env-changed=DEFMT_RTT_BUFFER_SIZE");
+    println!("cargo:rerun-if-env-changed=DEFMT_BRTT_BUFFER_SIZE");
 
     let size = env::var("DEFMT_BRTT_BUFFER_SIZE")
         .map(|s| {
