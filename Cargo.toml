@@ -9,3 +9,9 @@ description = "Defmt logs over RTT as well as through a BBQueue"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+defmt = "0.3"
+critical-section = "1.1"
+bbqueue = { version = "0.5.1", features = ["defmt_0_3"] }
+
+[features]
+async-await = [ ]
