@@ -109,8 +109,12 @@ impl DefmtConsumer {
     /// Obtains a contiguous slice of committed bytes. This slice may not
     /// contain ALL available bytes, if the writer has wrapped around. The
     /// remaining bytes will be available after all readable bytes are
-    /// released
-    pub fn read(&mut self) -> Result<GrantR<'static, BUF_SIZE>, Error> {
+    /// released.
+    pub fn read<'a>(&'a mut self) -> Result<GrantR<'a, BUF_SIZE>, Error> {
+        self.read_static()
+    }
+
+    fn read_static(&mut self) -> Result<GrantR<'static, BUF_SIZE>, Error> {
         Ok(self.cons.read()?)
     }
 
@@ -128,14 +132,14 @@ impl DefmtConsumer {
         &WAKER
     }
 
-    pub async fn wait_for_log(&mut self) -> GrantR<'static, BUF_SIZE> {
+    pub async fn wait_for_log<'a>(&'a mut self) -> GrantR<'a, BUF_SIZE> {
         let mut polled_once = false;
 
         loop {
             let awaited_grant = core::future::poll_fn(|ctx| {
                 Self::waker().register(ctx.waker());
 
-                let grant = self.read();
+                let grant = self.read_static();
 
                 if let Ok(grant) = grant {
                     core::task::Poll::Ready(Some(grant))
@@ -148,7 +152,7 @@ impl DefmtConsumer {
             })
             .await;
 
-            if let Some(grant) = awaited_grant.or(self.read().ok()) {
+            if let Some(grant) = awaited_grant.or(self.read_static().ok()) {
                 break grant;
             }
         }
