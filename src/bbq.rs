@@ -132,18 +132,23 @@ impl DefmtConsumer {
         let mut polled_once = false;
 
         loop {
-            core::future::poll_fn(|ctx| {
+            let awaited_grant = core::future::poll_fn(|ctx| {
                 Self::waker().register(ctx.waker());
-                if !polled_once {
+
+                let grant = self.read();
+
+                if let Ok(grant) = grant {
+                    core::task::Poll::Ready(Some(grant))
+                } else if !polled_once {
                     polled_once = true;
                     core::task::Poll::Pending
                 } else {
-                    core::task::Poll::Ready(())
+                    core::task::Poll::Ready(None)
                 }
             })
             .await;
 
-            if let Ok(grant) = self.read() {
+            if let Some(grant) = awaited_grant.or(self.read().ok()) {
                 break grant;
             }
         }
