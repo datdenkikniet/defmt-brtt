@@ -14,7 +14,20 @@ critical-section = "1.1"
 bbqueue = { version = "0.5.1", features = ["defmt_0_3"] }
 
 [features]
-default = ["rtt", "bbq"]
+default = [
+    "rtt",
+    "bbq",
+    # NOTE(defmt-bbq): It is *strongly* recommended to use the rzcobs encoding when
+    # using this crate. If the buffer is ever filled, then the remaining
+    # bytes will be discarded, which will corrupt the message stream.
+    #
+    # Because rzcobs is delimited by zero bytes, it is possible to recover
+    # from this corruption, with the loss of a limited number of messages.
+    # When using the "raw" encoding, you MUST ensure that the buffer is
+    # never overfilled, as it will NOT be possible to recover from this
+    # error condition.
+    "defmt/encoding-rzcobs"
+]
 bbq = [ ]
 async-await = [ ]
 rtt = [ ]
