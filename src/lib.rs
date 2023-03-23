@@ -1,15 +1,24 @@
 #![no_std]
 
-mod bbq;
-pub use bbq::{init, Consumer, DefmtConsumer, Error as BBQError, GrantR, SplitGrantR};
 mod consts;
+
+#[cfg(feature = "bbq")]
+mod bbq;
+#[cfg(feature = "bbq")]
+pub use bbq::{init, Consumer, DefmtConsumer, Error as BBQError, GrantR, SplitGrantR};
+
+#[cfg(feature = "rtt")]
 mod rtt;
+#[cfg(feature = "rtt")]
 use rtt::handle;
 
 #[cfg(feature = "async-await")]
 mod csec_waker;
 
 use core::sync::atomic::{AtomicBool, Ordering};
+
+#[cfg(not(any(feature = "rtt", feature = "bbq")))]
+compile_error!("You must select at least one of the `rtt` or `bbq` features (or both).");
 
 #[defmt::global_logger]
 struct Logger;
@@ -19,9 +28,11 @@ static TAKEN: AtomicBool = AtomicBool::new(false);
 static mut CS_RESTORE: critical_section::RestoreState = critical_section::RestoreState::invalid();
 static mut ENCODER: defmt::Encoder = defmt::Encoder::new();
 
-fn combined_write(data: &[u8]) {
-    rtt::do_write(data);
-    bbq::do_write(data);
+fn combined_write(_data: &[u8]) {
+    #[cfg(feature = "rtt")]
+    rtt::do_write(_data);
+    #[cfg(feature = "bbq")]
+    bbq::do_write(_data);
 }
 
 unsafe impl defmt::Logger for Logger {
@@ -34,6 +45,7 @@ unsafe impl defmt::Logger for Logger {
             panic!("defmt logger taken reentrantly")
         }
 
+        #[cfg(feature = "bbq")]
         if bbq::should_bail() {
             // safety: we have acquired a critical section and are releasing it
             // again, without modifying the TAKEN variable.
@@ -52,6 +64,7 @@ unsafe impl defmt::Logger for Logger {
     }
 
     unsafe fn flush() {
+        #[cfg(feature = "rtt")]
         // safety: accessing the `&'static _` is OK because we have acquired a critical section.
         handle().flush();
     }
@@ -60,6 +73,7 @@ unsafe impl defmt::Logger for Logger {
         // safety: accessing the `static mut` is OK because we have acquired a critical section.
         ENCODER.end_frame(combined_write);
 
+        #[cfg(feature = "bbq")]
         bbq::commit_w_grant();
 
         // safety: accessing the `static mut` is OK because we have acquired a critical section.
@@ -77,6 +91,7 @@ unsafe impl defmt::Logger for Logger {
     }
 
     unsafe fn write(bytes: &[u8]) {
+        #[cfg(feature = "bbq")]
         // Return early to avoid the encoder having to encode bytes we are going to throw away
         if bbq::check_latch(Ordering::Relaxed).is_err() {
             return;
