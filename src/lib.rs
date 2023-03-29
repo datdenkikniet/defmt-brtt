@@ -91,7 +91,7 @@ unsafe impl defmt::Logger for Logger {
     }
 
     unsafe fn write(bytes: &[u8]) {
-        #[cfg(feature = "bbq")]
+        #[cfg(all(feature = "bbq", not(feature = "rtt")))]
         // Return early to avoid the encoder having to encode bytes we are going to throw away
         if bbq::check_latch(Ordering::Relaxed).is_err() {
             return;
