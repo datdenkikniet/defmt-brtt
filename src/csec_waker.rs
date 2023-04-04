@@ -1,8 +1,10 @@
 //! Waker registration utility.
 //!
-//! From: rtic-common: https://github.com/rtic-rs/rtic/blob/5dc2c1d351d75d150d671994b1c67b2c0f9d16a0/rtic-common/src/waker_registration.rs
+//! From: [rtic-common]
 //!
 //! License: MIT or Apache 2
+//!
+//! [rtic-common]: https://github.com/rtic-rs/rtic/blob/5dc2c1d351d75d150d671994b1c67b2c0f9d16a0/rtic-common/src/waker_registration.rs
 
 use core::cell::UnsafeCell;
 use core::task::Waker;

@@ -12,7 +12,7 @@ use crate::csec_waker::CriticalSectionWakerRegistration as Waker;
 /// `DEFMT_BRTT_BUFFER_SIZE` environment variable at compile time
 pub use crate::consts::BUF_SIZE;
 
-/// The `defmt-bbq` error type
+/// The `defmt-brtt` BBQueue error type
 #[derive(Debug, defmt::Format, PartialEq, Eq)]
 pub enum Error {
     /// An internal latching fault has occured. No more logs will be returned.
@@ -99,7 +99,7 @@ pub fn init() -> Result<DefmtConsumer, Error> {
 ///
 /// This type is a wrapper around the
 /// [bbqueue::Consumer](https://docs.rs/bbqueue/latest/bbqueue/struct.Consumer.html) type,
-/// and returns defmt-bbq's [Error](crate::Error) type instead of bbqueue's
+/// and returns defmt-brtt's [Error](crate::bbq::Error) type instead of bbqueue's
 /// [bbqueue::Error](https://docs.rs/bbqueue/latest/bbqueue/enum.Error.html) type.
 pub struct DefmtConsumer {
     cons: Consumer<'static, BUF_SIZE>,
