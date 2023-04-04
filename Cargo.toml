@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 authors = ["Johannes Cornelis Draajier <jcdra1@gmail.com", "Emil Fresk <emil.fresk@gmail.com>"]
 license = "MIT OR Apache-2.0"
+repository = "https://github.com/datdenkikniet/defmt-brtt"
 description = "Defmt logs over RTT as well as through a BBQueue"
 keywords = ["defmt", "bbqueue", "rtt", "embedded", "logging"]
 categories = ["embedded", "encoding", "no-std", "development-tools"]
