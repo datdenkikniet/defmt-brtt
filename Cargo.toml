@@ -17,7 +17,7 @@ features = ["async-await"]
 [dependencies]
 defmt = "0.3"
 critical-section = "1.1"
-bbqueue = { version = "0.5.1", features = ["defmt_0_3"] }
+bbqueue = { version = "0.5.1", features = ["defmt_0_3"], optional = true }
 
 [features]
 default = [
@@ -34,6 +34,6 @@ default = [
     # error condition.
     "defmt/encoding-rzcobs"
 ]
-bbq = [ ]
+bbq = [ "dep:bbqueue" ]
 async-await = [ ]
 rtt = [ ]
