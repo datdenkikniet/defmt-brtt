@@ -29,11 +29,19 @@ To use the `defmt` logger implementation provided by `defmt-brtt`, you must alwa
 use defmt_brtt as _;
 ```
 
+You must also, somewhere in your code before calling any `defmt` logging function, call the `defmt_brtt::init!` macro.
+
+```rust
+fn main() {
+    let _ = defmt_brtt::init!();
+}
+```
+
 ## `rtt`
 To use the `rtt` functionality of this crate, you only need to do is activate the `rtt` feature (activated by default).
 
 ## `bbq`
-To use the `bbq` functionality of this crate, you must activate the `bbq` feature (activated by default). You must call `defmt_brtt::init` and use the returned `DefmtConsumer` to consume the `defmt` data.
+To use the `bbq` functionality of this crate, you must activate the `bbq` feature (activated by default). You must call `defmt_brtt::init!` and use the returned `DefmtConsumer` to consume the `defmt` data.
 
 The data that is produced by the `DefmtConsumer` can then be transported and fed to a decoder, such as [`defmt-print`](https://crates.io/crates/defmt-print), that will reconstruct the log messages from the `defmt` data.
 

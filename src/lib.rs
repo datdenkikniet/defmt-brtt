@@ -5,7 +5,10 @@ mod consts;
 #[cfg(feature = "bbq")]
 mod bbq;
 #[cfg(feature = "bbq")]
-pub use bbq::{init, Consumer, DefmtConsumer, Error as BBQError, GrantR, SplitGrantR};
+#[allow(deprecated)]
+pub use bbq::internal_initialize;
+#[cfg(feature = "bbq")]
+pub use bbq::{DefmtConsumer, Error as BBQError, GrantR, SplitGrantR};
 
 #[cfg(feature = "rtt")]
 mod rtt;
@@ -19,6 +22,17 @@ use core::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg(not(any(feature = "rtt", feature = "bbq")))]
 compile_error!("You must select at least one of the `rtt` or `bbq` features (or both).");
+
+#[cfg(not(feature = "bbq"))]
+#[macro_export]
+macro_rules! init {
+    ($path:path) => {
+        Result::<(), ()>::Ok(())
+    };
+    () => {
+        Result::<(), ()>::Ok(())
+    };
+}
 
 #[defmt::global_logger]
 struct Logger;
@@ -47,10 +61,23 @@ unsafe impl defmt::Logger for Logger {
 
         #[cfg(feature = "bbq")]
         if bbq::should_bail() {
-            // safety: we have acquired a critical section and are releasing it
-            // again, without modifying the TAKEN variable.
-            unsafe { critical_section::release(restore) };
-            return;
+            match bbq::check_latch(Ordering::Relaxed) {
+                Err(bbq::Error::UseBeforeInitLatchingFault) => {
+                    // NOTE(unreachable): this should be protected by
+                    // the `init` macro creating the BRTT_INITIALIZED
+                    // symbole.
+                    unreachable!("defmt_brtt is not initialized.")
+                }
+                Err(_) => {
+                    // NOTE(unreachable): this should simply never happen.
+                    // If it does, our reentrancy protection is broken.
+                    unreachable!("Internal error")
+                }
+                Ok(_) => {
+                    // NOTE(unreachable): should_bail always sets the latch.
+                    unreachable!()
+                }
+            }
         }
 
         // safety: accessing the `static mut` is OK because we have acquired a critical section.
