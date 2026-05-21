@@ -3,6 +3,7 @@ use core::{
     cell::UnsafeCell,
     mem::MaybeUninit,
     sync::atomic::{AtomicU8, AtomicUsize, Ordering},
+    task::Poll,
 };
 
 #[cfg(feature = "async-await")]
@@ -153,29 +154,14 @@ impl DefmtConsumer {
     }
 
     pub async fn wait_for_log<'a>(&'a mut self) -> GrantR<'a, BUF_SIZE> {
-        let mut polled_once = false;
-
-        loop {
-            let awaited_grant = core::future::poll_fn(|ctx| {
-                Self::waker().register(ctx.waker());
-
-                let grant = self.read_static();
-
-                if let Ok(grant) = grant {
-                    core::task::Poll::Ready(Some(grant))
-                } else if !polled_once {
-                    polled_once = true;
-                    core::task::Poll::Pending
-                } else {
-                    core::task::Poll::Ready(None)
-                }
-            })
-            .await;
-
-            if let Some(grant) = awaited_grant.or(self.read_static().ok()) {
-                break grant;
+        core::future::poll_fn(|ctx| {
+            Self::waker().register(ctx.waker());
+            match self.read_static() {
+                Ok(grant) => Poll::Ready(grant),
+                Err(_) => Poll::Pending,
             }
-        }
+        })
+        .await
     }
 }
 
