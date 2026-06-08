@@ -79,16 +79,10 @@ pub use bbqueue::SplitGrantR;
 #[macro_export]
 macro_rules! init {
     ($path:path) => {{
-        #[no_mangle]
-        static BRTT_INITIALIZED: core::sync::atomic::AtomicU8 =
-            core::sync::atomic::AtomicU8::new(0);
         #[allow(deprecated)]
         $path::internal_initialize()
     }};
     () => {{
-        #[no_mangle]
-        static BRTT_INITIALIZED: core::sync::atomic::AtomicU8 =
-            core::sync::atomic::AtomicU8::new(0);
         #[allow(deprecated)]
         ::defmt_brtt::internal_initialize()
     }};
@@ -347,12 +341,11 @@ unsafe impl Sync for UnsafeGrantW {}
 // The underlying byte storage containing the logs. Always valid
 static BBQ: BBBuffer<BUF_SIZE> = BBBuffer::new();
 
-extern "Rust" {
-    static BRTT_INITIALIZED: AtomicU8;
-}
+#[no_mangle]
+static BRTT_INITIALIZED: AtomicU8 = AtomicU8::new(0);
 
-// A tracking variable for ensuring state. Always valid (unless BRTT_INITIALIZED is not set.)
-static BBQ_STATE: &AtomicU8 = unsafe { &BRTT_INITIALIZED };
+// A tracking variable for ensuring state.
+static BBQ_STATE: &AtomicU8 = &BRTT_INITIALIZED;
 
 // The producer half of the logging queue. This field is ONLY
 // valid if `init()` has been called.
