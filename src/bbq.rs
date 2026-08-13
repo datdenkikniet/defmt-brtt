@@ -153,7 +153,9 @@ impl DefmtConsumer {
         &WAKER
     }
 
-    pub async fn wait_for_log<'a>(&'a mut self) -> GrantR<'a, BUF_SIZE> {
+    pub fn wait_for_log<'a>(
+        &'a mut self,
+    ) -> impl core::future::Future<Output = GrantR<'a, BUF_SIZE>> + Send {
         core::future::poll_fn(|ctx| {
             Self::waker().register(ctx.waker());
             match self.read_static() {
@@ -161,7 +163,6 @@ impl DefmtConsumer {
                 Err(_) => Poll::Pending,
             }
         })
-        .await
     }
 }
 
