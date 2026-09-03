@@ -8,17 +8,17 @@ mod bbq;
 #[allow(deprecated)]
 pub use bbq::internal_initialize;
 #[cfg(feature = "bbq")]
-pub use bbq::{DefmtConsumer, Error as BBQError, GrantR, SplitGrantR};
+pub use bbq::{DefmtConsumer, GrantR, InitError, ReadGrantError};
 
 #[cfg(feature = "rtt")]
 mod rtt;
 #[cfg(feature = "rtt")]
 use rtt::handle;
 
-#[cfg(feature = "async-await")]
-mod csec_waker;
-
-use core::sync::atomic::{AtomicBool, Ordering};
+use core::{
+    cell::UnsafeCell,
+    sync::atomic::{AtomicBool, Ordering},
+};
 
 #[cfg(not(any(feature = "rtt", feature = "bbq")))]
 compile_error!("You must select at least one of the `rtt` or `bbq` features (or both).");
@@ -40,7 +40,13 @@ struct Logger;
 /// Global logger lock.
 static TAKEN: AtomicBool = AtomicBool::new(false);
 static mut CS_RESTORE: critical_section::RestoreState = critical_section::RestoreState::invalid();
-static mut ENCODER: defmt::Encoder = defmt::Encoder::new();
+
+struct EncoderCell(UnsafeCell<defmt::Encoder>);
+
+// Access is serialized by the logger's critical section.
+unsafe impl Sync for EncoderCell {}
+
+static ENCODER: EncoderCell = EncoderCell(UnsafeCell::new(defmt::Encoder::new()));
 
 fn combined_write(_data: &[u8]) {
     #[cfg(feature = "rtt")]
@@ -60,24 +66,8 @@ unsafe impl defmt::Logger for Logger {
         }
 
         #[cfg(feature = "bbq")]
-        if bbq::should_bail() {
-            match bbq::check_latch(Ordering::Relaxed) {
-                Err(bbq::Error::UseBeforeInitLatchingFault) => {
-                    // NOTE(unreachable): this should be protected by
-                    // the `init` macro creating the BRTT_INITIALIZED
-                    // symbole.
-                    unreachable!("defmt_brtt is not initialized.")
-                }
-                Err(_) => {
-                    // NOTE(unreachable): this should simply never happen.
-                    // If it does, our reentrancy protection is broken.
-                    unreachable!("Internal error")
-                }
-                Ok(_) => {
-                    // NOTE(unreachable): should_bail always sets the latch.
-                    unreachable!()
-                }
-            }
+        if unsafe { bbq::ensure_initialized() }.is_err() {
+            panic!("defmt_brtt is not initialized")
         }
 
         // safety: accessing the `static mut` is OK because we have acquired a critical section.
@@ -87,7 +77,7 @@ unsafe impl defmt::Logger for Logger {
         unsafe { CS_RESTORE = restore };
 
         // safety: accessing the `static mut` is OK because we have acquired a critical section.
-        unsafe { ENCODER.start_frame(combined_write) }
+        unsafe { (*ENCODER.0.get()).start_frame(combined_write) }
     }
 
     unsafe fn flush() {
@@ -98,10 +88,7 @@ unsafe impl defmt::Logger for Logger {
 
     unsafe fn release() {
         // safety: accessing the `static mut` is OK because we have acquired a critical section.
-        ENCODER.end_frame(combined_write);
-
-        #[cfg(feature = "bbq")]
-        bbq::commit_w_grant();
+        (*ENCODER.0.get()).end_frame(combined_write);
 
         // safety: accessing the `static mut` is OK because we have acquired a critical section.
         TAKEN.store(false, Ordering::Relaxed);
@@ -112,19 +99,19 @@ unsafe impl defmt::Logger for Logger {
         // safety: Must be paired with corresponding call to acquire(), see above
         critical_section::release(restore);
 
-        // Wake the defmt consumer's waker
+        // Wakers may execute arbitrary code, so wake only after leaving the logger lock.
         #[cfg(feature = "async-await")]
-        bbq::DefmtConsumer::waker().wake();
+        bbq::wake_consumer();
     }
 
     unsafe fn write(bytes: &[u8]) {
         #[cfg(all(feature = "bbq", not(feature = "rtt")))]
         // Return early to avoid the encoder having to encode bytes we are going to throw away
-        if bbq::check_latch(Ordering::Relaxed).is_err() {
+        if unsafe { bbq::ensure_initialized() }.is_err() {
             return;
         }
 
         // safety: accessing the `static mut` is OK because we have acquired a critical section.
-        ENCODER.write(bytes, combined_write);
+        (*ENCODER.0.get()).write(bytes, combined_write);
     }
 }

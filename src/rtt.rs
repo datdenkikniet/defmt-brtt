@@ -36,7 +36,7 @@ pub(crate) unsafe fn handle() -> &'static Channel {
         max_down_channels: 0,
         up_channel: Channel {
             name: &NAME as *const _ as *const u8,
-            buffer: unsafe { &mut BUFFER as *mut _ as *mut u8 },
+            buffer: &raw mut BUFFER as *mut _ as *mut u8,
             size: BUF_SIZE,
             write: AtomicUsize::new(0),
             read: AtomicUsize::new(0),
@@ -53,7 +53,7 @@ pub(crate) unsafe fn handle() -> &'static Channel {
     #[link_section = ".data"]
     static NAME: [u8; 6] = *b"defmt\0";
 
-    &_SEGGER_RTT.up_channel
+    &*core::ptr::addr_of!(_SEGGER_RTT.up_channel)
 }
 
 pub(crate) fn do_write(bytes: &[u8]) {
