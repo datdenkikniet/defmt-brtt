@@ -1,73 +1,97 @@
-# `defmt-brtt`: defmt over `rtt` and `bbq`, simultaneously!
+# `defmt-brtt`
 
-This crate combines the functionality of `defmt-rtt` and `defmt-bbq` into one single crate.
+`defmt-brtt` sends the same defmt byte stream over RTT and an in-memory
+[`bbqueue`](https://docs.rs/bbqueue/0.7), depending on the enabled features.
+The queue can be drained by an application-specific transport such as USB or a
+network interface.
 
-This allows you to retrieve data over RTT, but also to pump it out over some other transport by reading the data from a `bbqueue`. 
+## Features
 
-Even if that is not a use-case you're interested in, you can also `defmt-brtt`  as an easier way of switching between using RTT and/or BBQueue as your defmt transport.
+- `rtt`: enable the RTT transport. Enabled by default.
+- `bbq`: enable the synchronous BBQueue transport. Enabled by default.
+- `async-await`: enable BBQueue's native async notifier and
+  [`DefmtConsumer::wait_for_log`]. This feature implies `bbq`.
+- `portable-atomic-critical-section`: provide async atomics on targets without
+  native compare-and-swap instructions, such as Cortex-M0. Enable this together
+  with `async-await` unless the firmware selects another portable-atomic backend.
 
-# Features
+At least one of `rtt` and `bbq` must be enabled.
 
-* `rtt`: activate the RTT transport (works exactly like [`defmt-rtt`](https://docs.rs/defmt-rtt/0.4.0/defmt_rtt/), except for [Buffer Size](#buffer-size)).
-* `bbq`: activate the BBQueue transport (works exactly like [`defmt-bbq`](https://docs.rs/defmt-bbq/0.1.0/defmt_bbq/), except for [Buffer Size](#buffer-size)).
-* `async-await`: add a function to `defmt_brtt::DefmtConsumer` that enables async-waiting for log data.
+## Encoding
 
-You must activate at least one of `rtt` and `bbq`.
+The firmware must select the defmt encoding. Using rzCOBS is strongly
+recommended because the BBQueue transport discards remaining bytes when the
+queue is full. rzCOBS framing lets the decoder recover after dropped data.
 
-# Buffer Size
-To configure the buffer size used by `defmt-brtt`, you can set the environment variable `DEFMT_BRTT_BUFFER_SIZE` to the desired size.
+```toml
+[dependencies]
+defmt = { version = "1", features = ["encoding-rzcobs"] }
+defmt-brtt = "0.1"
+```
 
-For example, if we'd want to use a 512 byte internal buffer, we would run `DEFMT_BRTT_BUFFER_SIZE=512 cargo build` in the build directory of a project.
+Raw encoding is only safe when the application can guarantee that the queue
+never fills.
 
-Note that `defmt-brtt` assigned one buffer of size `DEFMT_BRTT_BUFFER_SIZE` once for both `rtt` and `bbq`, if those features are activated.
+## Buffer Size
 
+Set `DEFMT_BRTT_BUFFER_SIZE` while compiling to change the default 1024-byte
+buffer:
 
-# User code required for use
-To use the `defmt` logger implementation provided by `defmt-brtt`, you must always add insert the following use statement somewhere in your project:
+```console
+DEFMT_BRTT_BUFFER_SIZE=512 cargo build
+```
+
+Each enabled transport allocates a separate buffer of this size.
+
+## Initialization
+
+Link the global logger and initialize it before emitting any defmt log:
 
 ```rust
 use defmt_brtt as _;
-```
 
-You must also, somewhere in your code before calling any `defmt` logging function, call the `defmt_brtt::init!` macro.
-
-```rust
 fn main() {
-    let _ = defmt_brtt::init!();
+    let consumer = defmt_brtt::init!().unwrap();
+    // Pass `consumer` to the task responsible for forwarding logs.
 }
 ```
 
-## `rtt`
-To use the `rtt` functionality of this crate, you only need to do is activate the `rtt` feature (activated by default).
+Calling `init!()` more than once returns `InitError::AlreadyInitialized`.
+Logging before initialization permanently latches an initialization error.
+With only `rtt` enabled, `init!()` is a no-op returning `Result<(), ()>`.
 
-## `bbq`
-To use the `bbq` functionality of this crate, you must activate the `bbq` feature (activated by default). You must call `defmt_brtt::init!` and use the returned `DefmtConsumer` to consume the `defmt` data.
-
-The data that is produced by the `DefmtConsumer` can then be transported and fed to a decoder, such as [`defmt-print`](https://crates.io/crates/defmt-print), that will reconstruct the log messages from the `defmt` data.
+## Synchronous Consumption
 
 ```rust
-fn main() {
-    let logger = defmt_brtt::init();
-
+fn forward_logs(consumer: defmt_brtt::DefmtConsumer) -> ! {
     loop {
-        if let Some(grant) = logger.read() {
-            let written_bytes = write_my_log_data_over_usb(&grant).ok();
-            // The step below is optional. Dropping the `Grant` releases
-            // all read bytes.
-            grant.release(written_bytes);
+        if let Ok(grant) = consumer.read() {
+            let written = write_my_log_data(&grant).unwrap_or(0);
+            grant.release(written);
         }
     }
 }
+```
 
-// If you have the `async-await` feature enabled, you
-// can also do the following:
-async fn read_logs(consumer: DefmtConsumer) {
+`read()` returns one contiguous section. Read again after releasing it to
+drain data that wrapped around the queue. Dropping a grant releases zero bytes;
+always call `release` with the number of bytes successfully forwarded.
+
+## Asynchronous Consumption
+
+Enable `async-await` and await BBQueue's native notification:
+
+```rust
+async fn forward_logs(consumer: defmt_brtt::DefmtConsumer) -> ! {
     loop {
-        let grant = logger.wait_for_log().await;
-        let written_bytes = write_my_log_data_over_usb(&grant).ok();
-        // The step below is optional. Dropping the `Grant` releases
-        // all read bytes.
-        grant.release(written_bytes);
+        let grant = consumer.wait_for_log().await;
+        let written = write_my_log_data(&grant).await.unwrap_or(0);
+        grant.release(written);
     }
 }
 ```
+
+The queue is single-producer, single-consumer. Do not wait on or read from the
+same consumer concurrently. Encoded chunks become visible as they are written;
+consumers must treat the queue as a byte stream rather than one grant per defmt
+frame.
