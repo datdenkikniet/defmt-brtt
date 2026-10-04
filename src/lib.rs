@@ -66,6 +66,9 @@ unsafe impl defmt::Logger for Logger {
         }
 
         #[cfg(feature = "bbq")]
+        // SAFETY: the critical section acquired above is still held. The
+        // reentrancy check passed, and no reference to the initialization state
+        // is retained by initialization or other logger calls.
         if unsafe { bbq::ensure_initialized() }.is_err() {
             panic!("defmt_brtt is not initialized")
         }
@@ -107,6 +110,9 @@ unsafe impl defmt::Logger for Logger {
     unsafe fn write(bytes: &[u8]) {
         #[cfg(all(feature = "bbq", not(feature = "rtt")))]
         // Return early to avoid the encoder having to encode bytes we are going to throw away
+        // SAFETY: defmt's Logger contract requires write to run between acquire
+        // and release, so the logger's critical section is still held. No
+        // reference to the initialization state is retained between calls.
         if unsafe { bbq::ensure_initialized() }.is_err() {
             return;
         }

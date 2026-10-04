@@ -63,7 +63,7 @@ With only `rtt` enabled, `init!()` is a no-op returning `Result<(), ()>`.
 ## Synchronous Consumption
 
 ```rust
-fn forward_logs(consumer: defmt_brtt::DefmtConsumer) -> ! {
+fn forward_logs(mut consumer: defmt_brtt::DefmtConsumer) -> ! {
     loop {
         if let Ok(grant) = consumer.read() {
             let written = write_my_log_data(&grant).unwrap_or(0);
@@ -82,7 +82,7 @@ always call `release` with the number of bytes successfully forwarded.
 Enable `async-await` and await BBQueue's native notification:
 
 ```rust
-async fn forward_logs(consumer: defmt_brtt::DefmtConsumer) -> ! {
+async fn forward_logs(mut consumer: defmt_brtt::DefmtConsumer) -> ! {
     loop {
         let grant = consumer.wait_for_log().await;
         let written = write_my_log_data(&grant).await.unwrap_or(0);
@@ -91,7 +91,9 @@ async fn forward_logs(consumer: defmt_brtt::DefmtConsumer) -> ! {
 }
 ```
 
-The queue is single-producer, single-consumer. Do not wait on or read from the
-same consumer concurrently. Encoded chunks become visible as they are written;
-consumers must treat the queue as a byte stream rather than one grant per defmt
-frame.
+The queue is single-producer, single-consumer. Reading and waiting require
+mutable access to the consumer, preventing concurrent waits or reads while a
+wait is pending. Release or drop each grant before reading or waiting again;
+BBQueue permits only one outstanding read grant. Encoded chunks become visible
+as they are written; consumers must treat the queue as a byte stream rather than
+one grant per defmt frame.

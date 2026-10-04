@@ -86,13 +86,15 @@ impl DefmtConsumer {
     /// Obtain a contiguous slice of committed bytes.
     ///
     /// The slice may not contain all available bytes when the queue wraps.
-    pub fn read(&self) -> Result<GrantR, ReadGrantError> {
+    pub fn read(&mut self) -> Result<GrantR, ReadGrantError> {
         self.consumer.read()
     }
 
     /// Wait until logging data is available and return a contiguous grant.
+    ///
+    /// The grant may not contain all available bytes when the queue wraps.
     #[cfg(feature = "async-await")]
-    pub fn wait_for_log(&self) -> impl core::future::Future<Output = GrantR> + Send + '_ {
+    pub fn wait_for_log(&mut self) -> impl core::future::Future<Output = GrantR> + Send + '_ {
         self.consumer.wait_read()
     }
 }
@@ -115,8 +117,16 @@ unsafe impl Sync for StateCell {}
 static BRTT_INITIALIZED: StateCell = StateCell(UnsafeCell::new(state::UNINITIALIZED));
 
 /// Check initialization while the logger's critical section is held.
+///
+/// # Safety
+///
+/// The caller must hold a critical section for the entire call to serialize
+/// access to `BRTT_INITIALIZED` with initialization and other logger calls.
+/// No other reference to the initialization state may be live during this call.
 pub(crate) unsafe fn ensure_initialized() -> Result<(), InitError> {
-    let state = &mut *BRTT_INITIALIZED.0.get();
+    // SAFETY: the caller holds a critical section and guarantees exclusive
+    // access to the initialization state for the duration of this call.
+    let state = unsafe { &mut *BRTT_INITIALIZED.0.get() };
     match *state {
         state::INITIALIZED => Ok(()),
         state::UNINITIALIZED => {
@@ -205,7 +215,7 @@ mod tests {
 
     #[test]
     fn initializes_once_and_transfers_bytes() {
-        let consumer = internal_initialize().unwrap();
+        let mut consumer = internal_initialize().unwrap();
 
         do_write(b"defmt");
         let grant = consumer.read().unwrap();
